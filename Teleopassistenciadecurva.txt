@@ -1,0 +1,61 @@
+package org.firstinspires.ftc.teamcode.teleOp;
+
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.util.Range;
+
+@TeleOp(name = "TeleOp Assistencia Curvas", group = "Assistencias")
+public class TeleOpCurvas extends LinearOpMode {
+
+    @Override
+    public void runOpMode() {
+        DcMotor MD = hardwareMap.get(DcMotor.class, "MD");
+        DcMotor ME = hardwareMap.get(DcMotor.class, "ME");
+
+        ME.setDirection(DcMotor.Direction.REVERSE);
+
+        MD.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        ME.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        // 0.0 = sem redução; 0.5 = redução moderada; 0.8 = redução forte.
+        final double CURVE_REDUCTION = 0.61;
+
+        waitForStart();
+
+        while (opModeIsActive()) {
+            double drive = gamepad1.left_stick_y;
+            double turn = -gamepad1.right_stick_x;
+
+            double curveAmount = Math.abs(turn);
+
+            // Quanto maior o giro, menor fica a velocidade de avanço.
+            double driveFactor = 1.0 - (CURVE_REDUCTION * curveAmount);
+            double assistedDrive = drive * driveFactor;
+
+            double leftPower = assistedDrive + turn;
+            double rightPower = assistedDrive - turn;
+
+            leftPower = Range.clip(leftPower, -1.0, 1.0);
+            rightPower = Range.clip(rightPower, -1.0, 1.0);
+
+            ME.setPower(leftPower);
+            MD.setPower(rightPower);
+
+            telemetry.addData("Giro", "%.2f", turn);
+            telemetry.addData("Reducao de curva", "%.2f", driveFactor);
+            telemetry.addData("Avanco assistido", "%.2f", assistedDrive);
+            telemetry.addData("ME", "%.2f", leftPower);
+            telemetry.addData("MD", "%.2f", rightPower);
+            telemetry.update();
+
+            if (gamepad1.a) {
+                ME.setPower(0);
+                MD.setPower(0);
+            }
+        }
+
+        ME.setPower(0);
+        MD.setPower(0);
+    }
+}

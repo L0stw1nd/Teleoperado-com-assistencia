@@ -1,0 +1,65 @@
+package org.firstinspires.ftc.teamcode.TeleOp;
+
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.util.Range;
+
+@TeleOp(name = "TeleOp Encoder", group = "Assistencias")
+public class TeleOpEncoder extends LinearOpMode {
+
+    @Override
+    public void runOpMode() {
+        DcMotorEx MD = hardwareMap.get(DcMotorEx.class, "MD");
+        DcMotorEx ME = hardwareMap.get(DcMotorEx.class, "ME");
+
+        ME.setDirection(DcMotor.Direction.REVERSE);
+
+        MD.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        ME.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        MD.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        ME.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        telemetry.addLine("Controle por encoder pronto");
+        telemetry.addLine("Use o joystick esquerdo para andar.");
+        telemetry.addLine("Use o joystick direito para virar.");
+        telemetry.addData("MD ticks/s", MD.getVelocity());
+        telemetry.addData("ME ticks/s", ME.getVelocity());
+        telemetry.update();
+
+        waitForStart();
+
+        while (opModeIsActive()) {
+            double drive = gamepad1.left_stick_y;
+            double turn = -gamepad1.right_stick_x;
+
+            double leftCommand = Range.clip(drive + turn, -1.0, 1.0);
+            double rightCommand = Range.clip(drive - turn, -1.0, 1.0);
+
+            // Velocidade máxima solicitada, em ticks por segundo.
+            // Ajuste este valor após medir o robô.
+            double MAX_TICKS_PER_SECOND = 900.0;
+
+            if (gamepad1.left_bumper) {
+                MD.setVelocity(0);
+                ME.setVelocity(0);
+            } else {
+                MD.setVelocity(rightCommand * MAX_TICKS_PER_SECOND);
+                ME.setVelocity(leftCommand * MAX_TICKS_PER_SECOND);
+            }
+
+            telemetry.addData("MD velocidade real", "%.1f", MD.getVelocity());
+            telemetry.addData("ME velocidade real", "%.1f", ME.getVelocity());
+            telemetry.addData("MD comando", "%.2f", rightCommand);
+            telemetry.addData("ME comando", "%.2f", leftCommand);
+            telemetry.update();
+
+        }
+
+        MD.setPower(0);
+        ME.setPower(0);
+    }
+}
+

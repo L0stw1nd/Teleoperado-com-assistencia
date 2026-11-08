@@ -1,0 +1,69 @@
+package org.firstinspires.ftc.teamcode.TeleOp;
+
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.util.Range;
+
+@TeleOp(name = "TeleOp Freio Progressivo", group = "Assistencias")
+public class TeleOpFreioProgressivo extends LinearOpMode {
+
+    @Override
+    public void runOpMode() {
+        DcMotor MD = hardwareMap.get(DcMotor.class, "MD");
+        DcMotor ME = hardwareMap.get(DcMotor.class, "ME");
+
+        ME.setDirection(DcMotor.Direction.REVERSE);
+
+        MD.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        ME.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        // Variação máxima de potência por ciclo do loop.
+        // Menor valor = resposta mais suave e mais lenta.
+        final double SLEW_RATE = 0.045;
+
+        double currentLeft = 0.0;
+        double currentRight = 0.0;
+
+        waitForStart();
+
+        while (opModeIsActive()) {
+            double drive = gamepad1.left_stick_y;
+            double turn = -gamepad1.right_stick_x;
+
+            double targetLeft = Range.clip(drive + turn, -1.0, 1.0);
+            double targetRight = Range.clip(drive - turn, -1.0, 1.0);
+
+            if (gamepad1.a) {
+                // Parada imediata de emergência pelo controle.
+                currentLeft = 0.0;
+                currentRight = 0.0;
+                ME.setPower(0);
+                MD.setPower(0);
+            } else {
+                currentLeft = moveToward(currentLeft, targetLeft, SLEW_RATE);
+                currentRight = moveToward(currentRight, targetRight, SLEW_RATE);
+
+                ME.setPower(currentLeft);
+                MD.setPower(currentRight);
+            }
+
+            telemetry.addData("Alvo ME", "%.2f", targetLeft);
+            telemetry.addData("Atual ME", "%.2f", currentLeft);
+            telemetry.addData("Alvo MD", "%.2f", targetRight);
+            telemetry.addData("Atual MD", "%.2f", currentRight);
+            telemetry.update();
+        }
+
+        ME.setPower(0);
+        MD.setPower(0);
+    }
+
+    private double moveToward(double current, double target, double step) {
+        if (target > current) {
+            return Math.min(current + step, target);
+        } else {
+            return Math.max(current - step, target);
+        }
+    }
+}

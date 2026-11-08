@@ -1,0 +1,82 @@
+package org.firstinspires.ftc.teamcode.TeleOp;
+
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.util.Range;
+
+@TeleOp(name = "TeleOp Reta", group = "Assistencias")
+public class TeleOpReta extends LinearOpMode {
+
+    @Override
+    public void runOpMode() {
+        DcMotorEx MD = hardwareMap.get(DcMotorEx.class, "MD");
+        DcMotorEx ME = hardwareMap.get(DcMotorEx.class, "ME");
+
+        ME.setDirection(DcMotor.Direction.REVERSE);
+
+        MD.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        ME.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        MD.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        ME.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        MD.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        ME.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        final double K_CORRECTION = 0.00085;
+        final double MAX_CORRECTION = 0.18;
+        final double TURN_DEADZONE = 0.08;
+
+        waitForStart();
+
+        while (opModeIsActive()) {
+            double drive = gamepad1.left_stick_y;
+            double turn = -gamepad1.right_stick_x;
+
+            int ticksMD = MD.getCurrentPosition();
+            int ticksME = ME.getCurrentPosition();
+
+            // Com a direção dos motores configurada corretamente, os dois
+            // valores devem crescer no mesmo sentido quando o robô avança.
+            double error = ticksME - ticksMD;
+
+            double correction = 0.0;
+
+            // Só corrige a trajetória quando o piloto não está fazendo curva.
+            if (Math.abs(turn) < TURN_DEADZONE && Math.abs(drive) > 0.10) {
+                correction = Range.clip(
+                    error * K_CORRECTION,
+                    -MAX_CORRECTION,
+                    MAX_CORRECTION
+                );
+            }
+
+            double leftPower = drive - correction + turn;
+            double rightPower = drive + correction - turn;
+
+            leftPower = Range.clip(leftPower, -1.0, 1.0);
+            rightPower = Range.clip(rightPower, -1.0, 1.0);
+
+            ME.setPower(leftPower);
+            MD.setPower(rightPower);
+
+            telemetry.addData("Encoder ME", ticksME);
+            telemetry.addData("Encoder MD", ticksMD);
+            telemetry.addData("Diferenca", error);
+            telemetry.addData("Correcao", correction);
+            telemetry.addData("Potencia ME", leftPower);
+            telemetry.addData("Potencia MD", rightPower);
+            telemetry.update();
+
+            if (gamepad1.a) {
+                ME.setPower(0);
+                MD.setPower(0);
+            }
+        }
+
+        ME.setPower(0);
+        MD.setPower(0);
+    }
+}
+

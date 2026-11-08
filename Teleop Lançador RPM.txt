@@ -1,0 +1,90 @@
+package org.firstinspires.ftc.teamcode.teleOp;
+
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.util.Range;
+
+@TeleOp(name = "TeleOp Lancador RPM", group = "Assistencias")
+public class TeleOpLancadorRPM extends LinearOpMode {
+
+    @Override
+    public void runOpMode() {
+
+        DcMotorEx MS = hardwareMap.get(
+            DcMotorEx.class, "MS");
+
+        MS.setZeroPowerBehavior(
+            DcMotor.ZeroPowerBehavior.FLOAT);
+
+        MS.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        final double MIN_RPM = 0.0;
+        final double MAX_RPM = 3000.0;
+        final double RPM_STEP = 100.0;
+
+        double targetRPM = 0.0;
+        boolean launcherEnabled = false;
+
+        boolean lastUp = false;
+        boolean lastDown = false;
+
+        waitForStart();
+
+        while (opModeIsActive()) {
+
+            boolean up = gamepad1.right_trigger > 0.5;
+            boolean down = gamepad1.left_trigger > 0.5;
+
+            if (up && !lastUp) {
+                targetRPM += RPM_STEP;
+            }
+
+            if (down && !lastDown) {
+                targetRPM -= RPM_STEP;
+            }
+
+            lastUp = up;
+            lastDown = down;
+
+            targetRPM = Range.clip(
+                targetRPM, MIN_RPM, MAX_RPM);
+
+            if (gamepad1.right_trigger > 0.5) {
+                launcherEnabled = true;
+            }
+
+            if (gamepad1.y) {
+                launcherEnabled = false;
+            }
+
+            // Controle simplificado por potencia.
+            // Nao representa controle real de RPM.
+
+            double power = 0.0;
+
+            if (launcherEnabled && targetRPM > 0) {
+                power = targetRPM / MAX_RPM;
+            }
+
+            MS.setPower(power);
+
+            telemetry.addData(
+                "RPM solicitado", "%.0f", targetRPM);
+
+            telemetry.addData(
+                "Potencia aplicada", "%.2f", power);
+
+            telemetry.addData(
+                "Lancador ativo", launcherEnabled);
+
+            telemetry.addData(
+                "Encoder", MS.getCurrentPosition());
+
+            telemetry.update();
+        }
+
+        MS.setPower(0);
+    }
+}

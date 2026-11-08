@@ -1,0 +1,58 @@
+package org.firstinspires.ftc.teamcode.teleOp;
+
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+
+@TeleOp(name = "TeleOp Precisao", group = "Assistencias")
+public class TeleOpPrecisao extends LinearOpMode {
+
+    @Override
+    public void runOpMode() {
+        DcMotor ME = hardwareMap.get(DcMotor.class, "ME");
+        DcMotor MD = hardwareMap.get(DcMotor.class, "MD");
+
+        // Ajuste conforme a montagem física do robô.
+        ME.setDirection(DcMotor.Direction.REVERSE);
+        MD.setDirection(DcMotor.Direction.FORWARD);
+
+        ME.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        MD.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        double fatorPrecisao = 0.35;
+        double fatorNormal = 1.0;
+
+        telemetry.addLine("TeleOp de Precisao pronto");
+        telemetry.addLine("Segure B para movimento lento");
+        telemetry.addLine("Use o joystick esquerdo para dirigir");
+        telemetry.update();
+
+        waitForStart();
+
+        while (opModeIsActive()) {
+            double velocidade = gamepad1.left_stick_y;
+            double giro = -gamepad1.right_stick_x;
+
+            double fator = gamepad1.b ? fatorPrecisao : fatorNormal;
+
+            double potenciaEsq = (velocidade + giro) * fator;
+            double potenciaDir = (velocidade - giro) * fator;
+
+            // Limita os valores ao intervalo permitido pelos motores.
+            potenciaEsq = Math.max(-1.0, Math.min(1.0, potenciaEsq));
+            potenciaDir = Math.max(-1.0, Math.min(1.0, potenciaDir));
+
+            ME.setPower(potenciaEsq);
+            MD.setPower(potenciaDir);
+
+            telemetry.addData("Modo", gamepad1.b ? "PRECISAO" : "NORMAL");
+            telemetry.addData("Fator", "%.2f", fator);
+            telemetry.addData("Potencia ME", "%.2f", potenciaEsq);
+            telemetry.addData("Potencia MD", "%.2f", potenciaDir);
+            telemetry.update();
+        }
+
+        ME.setPower(0);
+        MD.setPower(0);
+    }
+}
