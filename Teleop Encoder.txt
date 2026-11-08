@@ -42,7 +42,7 @@ public class TeleOpEncoder extends LinearOpMode {
             // Ajuste este valor após medir o robô.
             double MAX_TICKS_PER_SECOND = 900.0;
 
-            if (gamepad1.left_bumper) {
+            if (gamepad1.a) {
                 MD.setVelocity(0);
                 ME.setVelocity(0);
             } else {
