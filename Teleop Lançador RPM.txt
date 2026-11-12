@@ -1,3 +1,4 @@
+
 package org.firstinspires.ftc.teamcode.teleOp;
 
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -20,64 +21,45 @@ public class TeleOpLancadorRPM extends LinearOpMode {
 
         MS.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-        final double MIN_RPM = 0.0;
         final double MAX_RPM = 3000.0;
-        final double RPM_STEP = 100.0;
 
         double targetRPM = 0.0;
-        boolean launcherEnabled = false;
-
-        boolean lastUp = false;
-        boolean lastDown = false;
+        double power = 0.0;
 
         waitForStart();
 
         while (opModeIsActive()) {
 
-            boolean up = gamepad1.right_trigger > 0.5;
-            boolean down = gamepad1.left_trigger > 0.5;
+            // Leitura analogica do RT
+            double trigger = gamepad1.right_trigger;
 
-            if (up && !lastUp) {
-                targetRPM += RPM_STEP;
-            }
+            // Converte a pressao em potencia
+            power = Range.clip(trigger, 0.0, 1.0);
 
-            if (down && !lastDown) {
-                targetRPM -= RPM_STEP;
-            }
+            // Calcula a RPM solicitada estimada
+            targetRPM = power * MAX_RPM;
 
-            lastUp = up;
-            lastDown = down;
-
-            targetRPM = Range.clip(
-                targetRPM, MIN_RPM, MAX_RPM);
-
-            if (gamepad1.right_trigger > 0.5) {
-                launcherEnabled = true;
-            }
-
-            if (gamepad1.y) {
-                launcherEnabled = false;
-            }
-
-            // Controle simplificado por potencia.
-            // Nao representa controle real de RPM.
-
-            double power = 0.0;
-
-            if (launcherEnabled && targetRPM > 0) {
-                power = targetRPM / MAX_RPM;
-            }
-
+            // Aciona o lancador
             MS.setPower(power);
 
+            // Desliga pelo botao Y
+            if (gamepad1.y) {
+                MS.setPower(0.0);
+                power = 0.0;
+                targetRPM = 0.0;
+            }
+
             telemetry.addData(
-                "RPM solicitado", "%.0f", targetRPM);
+                "Pressao RT", "%.2f", trigger);
+
+            telemetry.addData(
+                "RPM solicitada (estimada)", "%.0f", targetRPM);
 
             telemetry.addData(
                 "Potencia aplicada", "%.2f", power);
 
             telemetry.addData(
-                "Lancador ativo", launcherEnabled);
+                "Lancador ativo", MS.getPower() > 0);
 
             telemetry.addData(
                 "Encoder", MS.getCurrentPosition());
@@ -85,6 +67,6 @@ public class TeleOpLancadorRPM extends LinearOpMode {
             telemetry.update();
         }
 
-        MS.setPower(0);
+        MS.setPower(0.0);
     }
 }
