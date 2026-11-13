@@ -31,7 +31,7 @@ public class TeleOpPrecisao extends LinearOpMode {
 
         while (opModeIsActive()) {
             double velocidade = gamepad1.left_stick_y;
-            double giro = -gamepad1.right_stick_x;
+            double giro = gamepad1.right_stick_x;
 
             double fator = gamepad1.b ? fatorPrecisao : fatorNormal;
 
