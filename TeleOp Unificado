@@ -1,4 +1,3 @@
-
 package org.firstinspires.ftc.teamcode.teleOp;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -411,6 +410,11 @@ public class TeleOpUnificado extends LinearOpMode {
                     emergencia = true;
                 }
 
+                if (gamepad2.dpad_down) {
+                    emergencia = true;
+                }
+
+
                 if (emergencia) {
 
                     pararTudo();
@@ -554,7 +558,7 @@ public class TeleOpUnificado extends LinearOpMode {
                 // =========================
 
                 double lt = Range.clip(
-                        gamepad1.left_trigger,
+                        gamepad2.left_trigger,
                         0,
                         1
                 );
@@ -562,7 +566,7 @@ public class TeleOpUnificado extends LinearOpMode {
                 double potenciaMI =
                         lt * MAX_MI;
 
-                if (gamepad1.x) {
+                if (gamepad2.x) {
                     potenciaMI *= REDUCAO_MI;
                 }
 
@@ -575,7 +579,7 @@ public class TeleOpUnificado extends LinearOpMode {
                 // =========================
 
                 double rt = Range.clip(
-                        gamepad1.right_trigger,
+                        gamepad2.right_trigger,
                         0,
                         1
                 );
@@ -583,7 +587,7 @@ public class TeleOpUnificado extends LinearOpMode {
                 double rpmAlvo =
                         rt * RPM_MAX;
 
-                if (gamepad1.y) {
+                if (gamepad2.y) {
                     rpmAlvo *= REDUCAO_MS;
                 }
 
