@@ -12,7 +12,7 @@ import com.qualcomm.robotcore.util.Range;
         name = "TeleOp Unificado",
         group = "Assistencias"
 )
-public class TeleOpUnificado extends LinearOpMode {
+public class TeleOpUnificadoeServoAlimentador extends LinearOpMode {
 
     // =====================================
     // CONFIGURACOES DA TRACAO
