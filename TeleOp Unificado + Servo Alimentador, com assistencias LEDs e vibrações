@@ -8,155 +8,89 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
-@TeleOp(
-        name = "TeleOp Unificado",
-        group = "Assistencias"
-)
-public class TeleOpUnificadoeServoAlimentador extends LinearOpMode {
+@TeleOp(name = "TeleOp Regional", group = "Regional")
+public class TeleOpUnificadoServoAlimentadorLED extends LinearOpMode {
 
-    // =====================================
-    // CONFIGURACOES DA TRACAO
-    // =====================================
-
+    // TRACAO
     private static final double ZONA_MORTA = 0.10;
-
     private static final double POT_MAX_DRIVE = 1.00;
     private static final double PRECISAO_DRIVE = 0.35;
-
     private static final double SENS_GIRO = 0.65;
-
     private static final double RAMPA_ACEL = 2.50;
     private static final double RAMPA_DESACEL = 4.00;
 
     private static final boolean ASSISTENCIA_RETA = false;
-
     private static final double KP_RETA = 0.00020;
     private static final double MAX_CORRECAO = 0.07;
 
-    // =====================================
     // INTAKE
-    // =====================================
-
     private static final double SINAL_MI = -1.0;
     private static final double MAX_MI = 1.00;
     private static final double REDUCAO_MI = 0.65;
 
-    // =====================================
-    // SHOOTER - PID DE RPM
-    // =====================================
-
+    // SHOOTER
     private static final double SINAL_MS = -1.0;
+    private static final double RPM_MAX_MS = 110.0;
+    private static final double MAX_POT_MS = 0.90;
+    private static final double REDUCAO_MS = 0.65;
 
-    private static final double RPM_MAX = 127.0;
+    // Ticks do encoder por volta da roda do shooter.
     private static final double TICKS_POR_VOLTA_MS = 560.0;
 
-    private static final double KP_MS = 0.0020;
-    private static final double KI_MS = 0.0005;
-    private static final double KD_MS = 0.00002;
+    // Ganhos iniciais. A resposta precisa ser validada no robo.
+    private static final double KP_MS = 0.002;
+    private static final double KI_MS = 0.003;
+    private static final double RAMPA_SUBIDA_MS = 0.30;
+    private static final double TOLERANCIA_RPM_MS = 5.0;
 
-    private static final double KF_MS = 0.60 / 127.0;
-
-    private static final double REDUCAO_MS = 0.65;
-    private static final double MAX_POT_MS = 1.00;
-
-    private static final double LIMITE_INTEGRAL = 100.0;
-    private static final double ALPHA_RPM = 0.25;
-
-    // =====================================
-    // SERVO ALIMENTADOR - PORTAS
-    // =====================================
-
+    // PORTAS
     private static final double SA_FECHADO = 0.0;
     private static final double SA_ABERTO = 0.5;
-
-    // =====================================
-    // HARDWARE
-    // =====================================
 
     private DcMotorEx MD;
     private DcMotorEx ME;
     private DcMotorEx MS;
     private DcMotor MI;
-
     private Servo SA1;
     private Servo SA2;
 
-    // =====================================
-    // ESTADOS DAS PORTAS
-    // =====================================
-
     private String estadoPortas = "FECHADAS";
+    private double atualMD;
+    private double atualME;
+    private int referenciaMD;
+    private int referenciaME;
+    private boolean retaAtiva;
+    private boolean emergencia;
 
-    // =====================================
-    // ESTADOS DA TRACAO
-    // =====================================
-
-    private double atualMD = 0;
-    private double atualME = 0;
-
-    private int referenciaMD = 0;
-    private int referenciaME = 0;
-
-    private boolean retaAtiva = false;
-    private boolean emergencia = false;
-
-    // =====================================
-    // ESTADOS DO SHOOTER
-    // =====================================
-
-    private double integralMS = 0;
-    private double rpmFiltrado = 0;
-    private double rpmAnterior = 0;
-
-    private double potenciaMS = 0;
-    private double alvoMS = 0;
-    private double erroMS = 0;
-
-    private boolean shooterAtivo = false;
-
-    // =====================================
-    // FEEDBACK LED / VIBRACAO
-    // =====================================
+    private double rpmAlvoMS;
+    private double rpmMedidoMS;
+    private double potenciaMS;
+    private double termoIntegralMS;
+    private double tempoSemLeituraMS;
+    private boolean falhaMS;
 
     private int ledAnterior = -1;
+    private boolean ledLaranja;
+    private boolean dpadUpAnterior;
 
-    private final ElapsedTime relogio =
-            new ElapsedTime();
-
-    // =====================================
-    // ZONA MORTA LINEAR
-    // =====================================
+    private final ElapsedTime relogio = new ElapsedTime();
 
     private double zonaMorta(double valor) {
-
         if (Math.abs(valor) < ZONA_MORTA) {
             return 0;
         }
 
         return Math.copySign(
-                (Math.abs(valor) - ZONA_MORTA)
-                        / (1.0 - ZONA_MORTA),
+                (Math.abs(valor) - ZONA_MORTA) / (1.0 - ZONA_MORTA),
                 valor
         );
     }
 
-    // =====================================
-    // RAMPA DE ACELERACAO
-    // =====================================
-
-    private double rampa(
-            double atual,
-            double alvo,
-            double dt) {
-
+    private double rampa(double atual, double alvo, double dt) {
         boolean desacelerando =
-                Math.abs(alvo) < Math.abs(atual)
-                        || atual * alvo < 0;
+                Math.abs(alvo) < Math.abs(atual) || atual * alvo < 0;
 
-        double taxa = desacelerando
-                ? RAMPA_DESACEL
-                : RAMPA_ACEL;
-
+        double taxa = desacelerando ? RAMPA_DESACEL : RAMPA_ACEL;
         double passo = taxa * dt;
         double diferenca = alvo - atual;
 
@@ -164,40 +98,162 @@ public class TeleOpUnificadoeServoAlimentador extends LinearOpMode {
             return alvo;
         }
 
-        return atual
-                + Math.copySign(passo, diferenca);
+        return atual + Math.copySign(passo, diferenca);
     }
 
-    // =====================================
-    // REFERENCIA DE ENCODERS
-    // =====================================
-
     private void atualizarReferencia() {
-
         referenciaME = ME.getCurrentPosition();
         referenciaMD = MD.getCurrentPosition();
     }
 
-    // =====================================
-    // RESET PID
-    // =====================================
+    private void controlarTracao(double dt) {
+        double avanco = zonaMorta(gamepad1.right_stick_x);
+        double giro = zonaMorta(-gamepad1.left_stick_y) * SENS_GIRO;
+        double correcao = 0;
 
-    private void resetPID() {
+        boolean solicitouReta = ASSISTENCIA_RETA
+                && Math.abs(giro) < 0.03
+                && Math.abs(avanco) > 0.15;
 
-        integralMS = 0;
-        rpmFiltrado = 0;
-        rpmAnterior = 0;
+        if (solicitouReta) {
+            if (!retaAtiva) {
+                atualizarReferencia();
+                retaAtiva = true;
+            }
 
-        potenciaMS = 0;
-        alvoMS = 0;
-        erroMS = 0;
+            int deltaME = ME.getCurrentPosition() - referenciaME;
+            int deltaMD = MD.getCurrentPosition() - referenciaMD;
 
-        shooterAtivo = false;
+            correcao = Range.clip(
+                    (deltaME - deltaMD) * KP_RETA,
+                    -MAX_CORRECAO,
+                    MAX_CORRECAO
+            );
+        } else {
+            retaAtiva = false;
+            atualizarReferencia();
+        }
+
+        double alvoME = avanco + giro - correcao;
+        double alvoMD = avanco - giro + correcao;
+
+        double maior = Math.max(
+                1.0,
+                Math.max(Math.abs(alvoME), Math.abs(alvoMD))
+        );
+
+        double limite = gamepad1.right_bumper
+                ? PRECISAO_DRIVE
+                : POT_MAX_DRIVE;
+
+        alvoME = alvoME / maior * limite;
+        alvoMD = alvoMD / maior * limite;
+
+        atualME = Range.clip(rampa(atualME, alvoME, dt), -limite, limite);
+        atualMD = Range.clip(rampa(atualMD, alvoMD, dt), -limite, limite);
+
+        ME.setPower(atualME);
+        MD.setPower(atualMD);
+
+        telemetry.addData("CORRECAO RETA", "%.3f", correcao);
     }
 
-    // =====================================
-    // ATUALIZACAO DOS LEDS E VIBRACAO
-    // =====================================
+    private void desligarShooter() {
+        MS.setPower(0);
+        potenciaMS = 0;
+        termoIntegralMS = 0;
+        tempoSemLeituraMS = 0;
+    }
+
+    private void controlarShooter(double rt, double dt) {
+        rpmMedidoMS = Math.abs(MS.getVelocity()) * 60.0 / TICKS_POR_VOLTA_MS;
+
+        rpmAlvoMS = rt * RPM_MAX_MS;
+        if (gamepad2.y) {
+            rpmAlvoMS *= REDUCAO_MS;
+        }
+
+        if (rt <= 0.01) {
+            rpmAlvoMS = 0;
+            desligarShooter();
+            return;
+        }
+
+        if (!Double.isFinite(rpmMedidoMS)) {
+            falhaMS = true;
+        }
+
+        // Interrompe se o motor recebe comando e o encoder segue parado.
+        if (potenciaMS >= 0.25 && rpmMedidoMS < 1.0) {
+            tempoSemLeituraMS += dt;
+            if (tempoSemLeituraMS >= 0.5) {
+                falhaMS = true;
+            }
+        } else {
+            tempoSemLeituraMS = 0;
+        }
+
+        if (falhaMS) {
+            desligarShooter();
+            return;
+        }
+
+        double erro = rpmAlvoMS - rpmMedidoMS;
+
+        // A subida e gradual. A reducao de potencia e imediata.
+        double tetoDoCiclo = Math.min(
+                MAX_POT_MS,
+                potenciaMS + RAMPA_SUBIDA_MS * dt
+        );
+
+        double proporcional = KP_MS * erro;
+        double integralCandidata = Range.clip(
+                termoIntegralMS + KI_MS * erro * dt,
+                0.0,
+                MAX_POT_MS
+        );
+
+        if (erro <= 0 || proporcional + integralCandidata <= tetoDoCiclo) {
+            termoIntegralMS = integralCandidata;
+        }
+
+        potenciaMS = Range.clip(
+                proporcional + termoIntegralMS,
+                0.0,
+                tetoDoCiclo
+        );
+
+        MS.setPower(SINAL_MS * potenciaMS);
+    }
+
+    private void controlarPortas() {
+        if (gamepad2.a && !gamepad2.b) {
+            SA1.setPosition(SA_ABERTO);
+            SA2.setPosition(SA_FECHADO);
+            estadoPortas = "ESQUERDA ABERTA";
+        } else if (gamepad2.b && !gamepad2.a) {
+            SA1.setPosition(SA_FECHADO);
+            SA2.setPosition(SA_ABERTO);
+            estadoPortas = "DIREITA ABERTA";
+        }
+    }
+
+    private void atualizarLedGamepad2() {
+        if (gamepad1.dpad_up && !dpadUpAnterior) {
+            ledLaranja = !ledLaranja;
+
+            gamepad2.setLedColor(
+                    ledLaranja ? 1.0 : 0.5,
+                    ledLaranja ? 0.5 : 0.0,
+                    ledLaranja ? 0.0 : 1.0,
+                    -1
+            );
+
+            gamepad2.rumbleBlips(1);
+        }
+
+        dpadUpAnterior = gamepad1.dpad_up;
+    }
 
     private void atualizarFeedback(
             boolean intakeAtivo,
@@ -206,651 +262,177 @@ public class TeleOpUnificadoeServoAlimentador extends LinearOpMode {
 
         int novoLed;
 
-        // VERMELHO
         if (intakeAtivo || (temArtefato && !shooterPronto)) {
             novoLed = 1;
-        }
-
-        // VERDE
-        else if (temArtefato && shooterPronto) {
+        } else if (temArtefato && shooterPronto) {
             novoLed = 2;
-        }
-
-        // APAGADO
-        else {
+        } else {
             novoLed = 0;
         }
 
-        // So vibra quando o estado do LED muda
-        if (novoLed != ledAnterior) {
-
-            if (novoLed == 1) {
-                gamepad1.setLedColor(1, 0, 0, 1000);
-            }
-            else if (novoLed == 2) {
-                gamepad1.setLedColor(0, 1, 0, 1000);
-            }
-            else {
-                gamepad1.setLedColor(0, 0, 0, 1000);
-            }
-
-            // Vibracao curta na troca de estado
-            if (ledAnterior != -1) {
-                gamepad1.rumbleBlips(1);
-            }
-
-            ledAnterior = novoLed;
+        if (novoLed == ledAnterior) {
+            return;
         }
+
+        if (novoLed == 1) {
+            gamepad1.setLedColor(1, 0, 0, 1000);
+        } else if (novoLed == 2) {
+            gamepad1.setLedColor(0, 1, 0, 1000);
+        } else {
+            gamepad1.setLedColor(0, 0, 0, 1000);
+        }
+
+        if (ledAnterior != -1) {
+            gamepad1.rumbleBlips(1);
+        }
+
+        ledAnterior = novoLed;
     }
 
-    private void resetarFeedback() {
+    private void pararTudo() {
+        MD.setPower(0);
+        ME.setPower(0);
+        MI.setPower(0);
+        desligarShooter();
+
+        rpmAlvoMS = 0;
+        atualMD = 0;
+        atualME = 0;
+        retaAtiva = false;
+
         gamepad1.setLedColor(0, 0, 0, 1000);
         ledAnterior = -1;
     }
 
-    // =====================================
-    // PARADA GERAL
-    // =====================================
-
-    private void pararTudo() {
-
-        MD.setPower(0);
-        ME.setPower(0);
-
-        MI.setPower(0);
-        MS.setPower(0);
-
-        atualMD = 0;
-        atualME = 0;
-
-        retaAtiva = false;
-
-        resetPID();
-        resetarFeedback();
-    }
-
-    // =====================================
-    // CONTROLE DAS PORTAS
-    // =====================================
-
-    private void controlarPortas() {
-
-        // A: esquerda abre, direita fecha
-        if (gamepad2.a && !gamepad2.b) {
-
-            SA1.setPosition(SA_ABERTO);
-            SA2.setPosition(SA_FECHADO);
-
-            estadoPortas = "ESQUERDA ABERTA";
-        }
-
-        // B: esquerda fecha, direita abre
-        else if (gamepad2.b && !gamepad2.a) {
-
-            SA1.setPosition(SA_FECHADO);
-            SA2.setPosition(SA_ABERTO);
-
-            estadoPortas = "DIREITA ABERTA";
-        }
-
-        // Nenhum botao: mantem a ultima posicao
-    }
-
-    // =====================================
-    // PID SHOOTER
-    // =====================================
-
-    private void controlarShooter(
-            double rpmAlvo,
-            double dt) {
-
-        if (rpmAlvo <= 0) {
-
-            MS.setPower(0);
-            resetPID();
-
-            return;
-        }
-
-        if (!shooterAtivo) {
-
-            integralMS = 0;
-
-            rpmFiltrado =
-                    Math.abs(MS.getVelocity())
-                            * 60.0
-                            / TICKS_POR_VOLTA_MS;
-
-            rpmAnterior = rpmFiltrado;
-            shooterAtivo = true;
-        }
-
-        alvoMS = rpmAlvo;
-
-        double rpmMedido =
-                Math.abs(MS.getVelocity())
-                        * 60.0
-                        / TICKS_POR_VOLTA_MS;
-
-        rpmFiltrado =
-                ALPHA_RPM * rpmMedido
-                        + (1.0 - ALPHA_RPM)
-                        * rpmFiltrado;
-
-        erroMS = alvoMS - rpmFiltrado;
-
-        double derivada =
-                (rpmFiltrado - rpmAnterior) / dt;
-
-        rpmAnterior = rpmFiltrado;
-
-        double proporcional =
-                KP_MS * erroMS;
-
-        double derivativo =
-                -KD_MS * derivada;
-
-        double feedforward =
-                KF_MS * rpmAlvo;
-
-        double novaIntegral = Range.clip(
-                integralMS + erroMS * dt,
-                -LIMITE_INTEGRAL,
-                LIMITE_INTEGRAL
-        );
-
-        double candidato =
-                feedforward
-                        + proporcional
-                        + KI_MS * novaIntegral
-                        + derivativo;
-
-        boolean saturouAlto =
-                candidato > MAX_POT_MS
-                        && erroMS > 0;
-
-        boolean saturouBaixo =
-                candidato < 0
-                        && erroMS < 0;
-
-        if (!saturouAlto && !saturouBaixo) {
-            integralMS = novaIntegral;
-        }
-
-        double comando =
-                feedforward
-                        + proporcional
-                        + KI_MS * integralMS
-                        + derivativo;
-
-        potenciaMS = Range.clip(
-                comando,
-                0,
-                MAX_POT_MS
-        );
-
-        MS.setPower(
-                SINAL_MS * potenciaMS
-        );
-    }
-
-    // =====================================
-    // OPMODE PRINCIPAL
-    // =====================================
-
     @Override
     public void runOpMode() {
+        MD = hardwareMap.get(DcMotorEx.class, "MD");
+        ME = hardwareMap.get(DcMotorEx.class, "ME");
+        MS = hardwareMap.get(DcMotorEx.class, "MS");
+        MI = hardwareMap.get(DcMotor.class, "MI");
 
-        MD = hardwareMap.get(
-                DcMotorEx.class, "MD"
-        );
+        SA1 = hardwareMap.get(Servo.class, "SA1");
+        SA2 = hardwareMap.get(Servo.class, "SA2");
 
-        ME = hardwareMap.get(
-                DcMotorEx.class, "ME"
-        );
-
-        MS = hardwareMap.get(
-                DcMotorEx.class, "MS"
-        );
-
-        MI = hardwareMap.get(
-                DcMotor.class, "MI"
-        );
-
-        // =================================
-        // SERVOS
-        // =================================
-
-        SA1 = hardwareMap.get(
-                Servo.class, "SA1"
-        );
-
-        SA2 = hardwareMap.get(
-                Servo.class, "SA2"
-        );
-
-        // Posicao inicial: ambas fechadas
         SA1.setPosition(SA_FECHADO);
         SA2.setPosition(SA_FECHADO);
 
-        // =================================
-        // DIRECAO DOS MOTORES
-        // =================================
+        MD.setDirection(DcMotor.Direction.FORWARD);
+        ME.setDirection(DcMotor.Direction.FORWARD);
 
-        MD.setDirection(
-                DcMotor.Direction.FORWARD
-        );
+        MD.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        ME.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        MI.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        MS.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
-        ME.setDirection(
-                DcMotor.Direction.FORWARD
-        );
+        MD.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        ME.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
-        // =================================
-        // COMPORTAMENTO DOS MOTORES
-        // =================================
-
-        MD.setZeroPowerBehavior(
-                DcMotor.ZeroPowerBehavior.BRAKE
-        );
-
-        ME.setZeroPowerBehavior(
-                DcMotor.ZeroPowerBehavior.BRAKE
-        );
-
-        MI.setZeroPowerBehavior(
-                DcMotor.ZeroPowerBehavior.BRAKE
-        );
-
-        MS.setZeroPowerBehavior(
-                DcMotor.ZeroPowerBehavior.FLOAT
-        );
-
-        MD.setMode(
-                DcMotor.RunMode.RUN_WITHOUT_ENCODER
-        );
-
-        ME.setMode(
-                DcMotor.RunMode.RUN_WITHOUT_ENCODER
-        );
-
-        MS.setMode(
-                DcMotor.RunMode.RUN_USING_ENCODER
-        );
+        // O controle de RPM e feito em controlarShooter().
+        MS.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
         pararTudo();
 
-        telemetry.addLine("MECA TELEOP V4");
-        telemetry.addLine("Velocidade maxima: 100%");
-        telemetry.addLine("Aceleracao: 2.50");
-        telemetry.addLine("Desaceleracao: 4.00");
-        telemetry.addLine("RB: precisao DRIVE 35%");
-        telemetry.addLine("LT: intake");
-        telemetry.addLine("X: intake 65%");
-        telemetry.addLine("RT: shooter PID");
-        telemetry.addLine("Y: reduzir RPM 35%");
-        telemetry.addLine("A: SA1 abre / SA2 fecha");
-        telemetry.addLine("B: SA1 fecha / SA2 abre");
+        telemetry.addLine("MECA TELEOP REGIONAL");
+        telemetry.addLine("GP1 RB: precisao da base");
+        telemetry.addLine("GP1 DPAD CIMA: LED e vibracao do GP2");
+        telemetry.addLine("GP2 LT: intake | X: precisao do intake");
+        telemetry.addLine("GP2 RT: ate 110 RPM | Y + RT: ate 71,5 RPM");
+        telemetry.addLine("Shooter: limite de potencia de 90%");
+        telemetry.addLine("GP2 A/B: portas esquerda/direita");
         telemetry.addLine("DPAD BAIXO: emergencia");
         telemetry.update();
 
         waitForStart();
 
         if (isStopRequested()) {
-
             pararTudo();
             return;
         }
 
+        gamepad2.setLedColor(0.5, 0, 1, -1);
         atualizarReferencia();
         relogio.reset();
 
         try {
-
             while (opModeIsActive()) {
-
-                double dt = Range.clip(
-                        relogio.seconds(),
-                        0.001,
-                        0.10
-                );
-
+                double dt = Range.clip(relogio.seconds(), 0.0, 0.10);
                 relogio.reset();
 
-                // =========================
-                // EMERGENCIA
-                // =========================
-
-                if (gamepad1.dpad_down) {
-                    emergencia = true;
-                }
-
-                if (gamepad2.dpad_down) {
+                if (gamepad1.dpad_down || gamepad2.dpad_down) {
                     emergencia = true;
                 }
 
                 if (emergencia) {
-
                     pararTudo();
-
-                    telemetry.addLine(
-                            "EMERGENCIA ATIVADA"
-                    );
-
-                    telemetry.addLine(
-                            "Reinicie o TeleOp"
-                    );
-
+                    telemetry.addLine("EMERGENCIA ATIVADA");
+                    telemetry.addLine("Reinicie o TeleOp");
                     telemetry.update();
-
                     idle();
                     continue;
                 }
 
-                // =========================
-                // JOYSTICKS
-                // =========================
+                atualizarLedGamepad2();
+                controlarTracao(dt);
 
-                double drive = zonaMorta(
-                        -gamepad1.left_stick_y
-                );
-
-                double turn = zonaMorta(
-                        gamepad1.right_stick_x
-                ) * SENS_GIRO;
-
-                double avanco = drive;
-
-                // =========================
-                // ASSISTENCIA DE RETA
-                // =========================
-
-                double correcao = 0;
-
-                boolean solicitouReta =
-                        ASSISTENCIA_RETA
-                                && Math.abs(turn) < 0.03
-                                && Math.abs(avanco) > 0.15;
-
-                if (solicitouReta) {
-
-                    if (!retaAtiva) {
-
-                        atualizarReferencia();
-                        retaAtiva = true;
-                    }
-
-                    int deltaME =
-                            ME.getCurrentPosition()
-                                    - referenciaME;
-
-                    int deltaMD =
-                            MD.getCurrentPosition()
-                                    - referenciaMD;
-
-                    double erro =
-                            deltaME - deltaMD;
-
-                    correcao = Range.clip(
-                            erro * KP_RETA,
-                            -MAX_CORRECAO,
-                            MAX_CORRECAO
-                    );
-
-                } else {
-
-                    retaAtiva = false;
-                    atualizarReferencia();
-                }
-
-                // =========================
-                // MISTURA DIFERENCIAL
-                // =========================
-
-                double alvoME =
-                        avanco + turn - correcao;
-
-                double alvoMD =
-                        avanco - turn + correcao;
-
-                double maior = Math.max(
-                        1.0,
-                        Math.max(
-                                Math.abs(alvoME),
-                                Math.abs(alvoMD)
-                        )
-                );
-
-                alvoME /= maior;
-                alvoMD /= maior;
-
-                // =========================
-                // LIMITADOR DE POTENCIA
-                // =========================
-
-                double limite =
-                        gamepad1.right_bumper
-                                ? PRECISAO_DRIVE
-                                : POT_MAX_DRIVE;
-
-                alvoME *= limite;
-                alvoMD *= limite;
-
-                // =========================
-                // RAMPA
-                // =========================
-
-                atualME = rampa(
-                        atualME,
-                        alvoME,
-                        dt
-                );
-
-                atualMD = rampa(
-                        atualMD,
-                        alvoMD,
-                        dt
-                );
-
-                atualME = Range.clip(
-                        atualME,
-                        -limite,
-                        limite
-                );
-
-                atualMD = Range.clip(
-                        atualMD,
-                        -limite,
-                        limite
-                );
-
-                ME.setPower(atualME);
-                MD.setPower(atualMD);
-
-                // =========================
-                // INTAKE
-                // =========================
-
-                double lt = Range.clip(
-                        gamepad2.left_trigger,
-                        0,
-                        1
-                );
-
-                double potenciaMI =
-                        lt * MAX_MI;
+                double lt = Range.clip(gamepad2.left_trigger, 0.0, 1.0);
+                double potenciaMI = lt * MAX_MI;
 
                 if (gamepad2.x) {
                     potenciaMI *= REDUCAO_MI;
                 }
 
-                MI.setPower(
-                        SINAL_MI * potenciaMI
-                );
+                MI.setPower(SINAL_MI * potenciaMI);
 
-                // =========================
-                // SHOOTER
-                // =========================
-
-                double rt = Range.clip(
-                        gamepad2.right_trigger,
-                        0,
-                        1
-                );
-
-                double rpmAlvo =
-                        rt * RPM_MAX;
-
-                if (gamepad2.y) {
-                    rpmAlvo *= REDUCAO_MS;
-                }
-
-                controlarShooter(
-                        rpmAlvo,
-                        dt
-                );
-
-                // =========================
-                // SERVO ALIMENTADOR
-                // =========================
-
+                double rt = Range.clip(gamepad2.right_trigger, 0.0, 1.0);
+                controlarShooter(rt, dt);
                 controlarPortas();
 
-                // =========================
-                // FEEDBACK LED / VIBRACAO
-                // =========================
-
                 boolean intakeAtivo = potenciaMI > 0.05;
-                // Substitua pela leitura do seu sensor ou flag de artefato quando houver
-                boolean temArtefato = false;
-                boolean shooterPronto = rpmAlvo > 1.0
-                        && Math.abs(rpmFiltrado - rpmAlvo) <= 8.0;
+                boolean temArtefato = false; // Reservado para o sensor.
+                boolean shooterPronto = !falhaMS
+                        && rpmAlvoMS > TOLERANCIA_RPM_MS
+                        && Math.abs(rpmMedidoMS - rpmAlvoMS) <= TOLERANCIA_RPM_MS;
 
-                atualizarFeedback(
-                        intakeAtivo,
-                        temArtefato,
-                        shooterPronto
-                );
-
-                // =========================
-                // TELEMETRIA
-                // =========================
+                atualizarFeedback(intakeAtivo, temArtefato, shooterPronto);
 
                 telemetry.addData(
                         "DRIVE",
-                        gamepad1.right_bumper
-                                ? "PRECISAO"
-                                : "NORMAL"
+                        gamepad1.right_bumper ? "PRECISAO" : "NORMAL"
                 );
-
-                telemetry.addData(
-                        "MD POTENCIA",
-                        "%.2f",
-                        atualMD
-                );
-
-                telemetry.addData(
-                        "ME POTENCIA",
-                        "%.2f",
-                        atualME
-                );
-
-                telemetry.addData(
-                        "MD ENCODER",
-                        MD.getCurrentPosition()
-                );
-
-                telemetry.addData(
-                        "ME ENCODER",
-                        ME.getCurrentPosition()
-                );
-
-                telemetry.addData(
-                        "MD VELOCIDADE",
-                        "%.1f",
-                        MD.getVelocity()
-                );
-
-                telemetry.addData(
-                        "ME VELOCIDADE",
-                        "%.1f",
-                        ME.getVelocity()
-                );
-
+                telemetry.addData("MD POTENCIA", "%.2f", atualMD);
+                telemetry.addData("ME POTENCIA", "%.2f", atualME);
+                telemetry.addData("MD ENCODER", MD.getCurrentPosition());
+                telemetry.addData("ME ENCODER", ME.getCurrentPosition());
+                telemetry.addData("MD VELOCIDADE", "%.1f", MD.getVelocity());
+                telemetry.addData("ME VELOCIDADE", "%.1f", ME.getVelocity());
                 telemetry.addData(
                         "ASSISTENCIA RETA",
-                        ASSISTENCIA_RETA
-                                ? "ATIVA"
-                                : "DESATIVADA"
+                        ASSISTENCIA_RETA ? "ATIVA" : "DESATIVADA"
                 );
+                telemetry.addData("MI POTENCIA", "%.2f", MI.getPower());
 
-                telemetry.addData(
-                        "CORRECAO RETA",
-                        "%.3f",
-                        correcao
-                );
+                telemetry.addLine("---- SHOOTER ----");
+                telemetry.addData("RT GAMEPAD 2", "%.2f", rt);
+                telemetry.addData("RPM ALVO", "%.1f", rpmAlvoMS);
+                telemetry.addData("RPM MEDIDO", "%.1f", rpmMedidoMS);
+                telemetry.addData("COMANDO MS", "%.1f%%", potenciaMS * 100.0);
+                telemetry.addData("MS ENCODER", MS.getCurrentPosition());
 
-                telemetry.addData(
-                        "MI POTENCIA",
-                        "%.2f",
-                        MI.getPower()
-                );
+                if (falhaMS) {
+                    telemetry.addLine("MS parado: confira a roda e o encoder.");
+                    telemetry.addLine("Reinicie o TeleOp apos verificar.");
+                }
 
-                telemetry.addLine(
-                        "---- SHOOTER PID ----"
-                );
-
-                telemetry.addData(
-                        "RPM ALVO",
-                        "%.1f",
-                        alvoMS
-                );
-
-                telemetry.addData(
-                        "RPM MEDIDO",
-                        "%.1f",
-                        rpmFiltrado
-                );
-
-                telemetry.addData(
-                        "ERRO RPM",
-                        "%.1f",
-                        erroMS
-                );
-
-                telemetry.addData(
-                        "SAIDA PID",
-                        "%.3f",
-                        potenciaMS
-                );
-
-                telemetry.addLine(
-                        "---- PORTAS SA ----"
-                );
-
-                telemetry.addData(
-                        "SA1 ESQUERDA",
-                        "%.2f",
-                        SA1.getPosition()
-                );
-
-                telemetry.addData(
-                        "SA2 DIREITA",
-                        "%.2f",
-                        SA2.getPosition()
-                );
-
-                telemetry.addData(
-                        "ESTADO DAS PORTAS",
-                        estadoPortas
-                );
+                telemetry.addLine("---- PORTAS SA ----");
+                telemetry.addData("SA1 ESQUERDA", "%.2f", SA1.getPosition());
+                telemetry.addData("SA2 DIREITA", "%.2f", SA2.getPosition());
+                telemetry.addData("ESTADO DAS PORTAS", estadoPortas);
 
                 telemetry.update();
-
                 idle();
             }
-
         } finally {
-
             pararTudo();
         }
     }
